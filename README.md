@@ -1,0 +1,1 @@
+# Schachturnier-app-nach-Schweizer-Art
