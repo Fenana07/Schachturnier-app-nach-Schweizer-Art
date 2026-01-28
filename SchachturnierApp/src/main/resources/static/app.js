@@ -90,6 +90,11 @@ const resultOptions = [
 ];
 
 const toast = document.getElementById("toast");
+const state = {
+  tournaments: [],
+  participantsByTournament: new Map(),
+  roundsByTournament: new Map()
+};
 
 function showToast(message) {
   toast.textContent = message;
@@ -108,6 +113,7 @@ function setActiveSection(sectionId) {
 
 async function loadTournaments() {
   const tournaments = await tournamentApi.list();
+  state.tournaments = tournaments;
   renderTournamentCards(tournaments);
   hydrateTournamentSelects(tournaments);
 }
@@ -185,6 +191,7 @@ function hydratePlayerSelect(players) {
 
 async function loadParticipants(tournamentId) {
   const participants = await tournamentApi.participants(tournamentId);
+  state.participantsByTournament.set(String(tournamentId), participants);
   const list = document.getElementById("participants-list");
   list.innerHTML = "";
   participants.forEach((participant) => {
@@ -203,6 +210,7 @@ async function loadParticipants(tournamentId) {
 
 async function loadRounds(tournamentId) {
   const rounds = await roundApi.list(tournamentId);
+  state.roundsByTournament.set(String(tournamentId), rounds);
   const container = document.getElementById("rounds-list");
   container.innerHTML = "";
 
@@ -224,7 +232,7 @@ async function loadRounds(tournamentId) {
           <strong>Board ${match.boardNo}</strong>
           <div>${match.whitePlayer ?? "BYE"} vs ${match.blackPlayer ?? "BYE"}</div>
         </div>
-        <select data-match-id="${match.id}" class="result-select">
+        <select data-match-id="${match.id}" data-current-result="${match.resultCode}" class="result-select">
           ${options}
         </select>
       `;
@@ -233,6 +241,18 @@ async function loadRounds(tournamentId) {
 
     container.appendChild(roundBlock);
   });
+}
+
+function updateGenerateButtonState(tournamentId) {
+  const button = document.getElementById("generate-round");
+  const participants = state.participantsByTournament.get(String(tournamentId)) ?? [];
+  const rounds = state.roundsByTournament.get(String(tournamentId)) ?? [];
+  const tournament = state.tournaments.find((item) => String(item.id) === String(tournamentId));
+  const maxRounds = tournament?.roundsCount ?? null;
+
+  const noPlayers = participants.length === 0;
+  const roundsComplete = Number.isFinite(maxRounds) && rounds.length >= maxRounds;
+  button.disabled = noPlayers || roundsComplete;
 }
 
 async function loadStandings(tournamentId) {
@@ -279,6 +299,7 @@ function wireForms() {
         tieBreakers
       });
       showToast("Tournament created.");
+      event.target.reset();
       await loadTournaments();
     } catch (error) {
       console.error(error);
@@ -300,6 +321,7 @@ function wireForms() {
       });
       showToast("Participant added.");
       await loadParticipants(tournamentId);
+      updateGenerateButtonState(tournamentId);
     } catch (error) {
       console.error(error);
       showToast("Failed to add participant.");
@@ -347,7 +369,9 @@ function wireActions() {
   });
 
   document.getElementById("pairings-tournament").addEventListener("change", async (event) => {
-    await loadRounds(event.target.value);
+    const tournamentId = event.target.value;
+    await Promise.all([loadRounds(tournamentId), loadParticipants(tournamentId)]);
+    updateGenerateButtonState(tournamentId);
   });
 
   document.getElementById("standings-tournament").addEventListener("change", async (event) => {
@@ -362,6 +386,7 @@ function wireActions() {
       await roundApi.generateNext(tournamentId);
       showToast("Round generated.");
       await loadRounds(tournamentId);
+      updateGenerateButtonState(tournamentId);
     } catch (error) {
       console.error(error);
       showToast("Failed to generate round.");
@@ -375,10 +400,19 @@ function wireActions() {
     const matchId = select.dataset.matchId;
 
     // Backend mapping: PUT /matches/{id}/result updates Match.resultCode.
+    const previousValue = select.dataset.currentResult;
+    if (previousValue && previousValue !== select.value) {
+      const confirmed = window.confirm("Save the new match result?");
+      if (!confirmed) {
+        select.value = previousValue;
+        return;
+      }
+    }
     try {
       await matchApi.updateResult(matchId, {
         resultCode: select.value
       });
+      select.dataset.currentResult = select.value;
       const tournamentId = document.getElementById("pairings-tournament").value;
       showToast("Result saved.");
       await loadStandings(tournamentId);
@@ -398,13 +432,18 @@ async function bootstrap() {
 
   const defaultTournamentId = document.getElementById("pairings-tournament").value;
   if (defaultTournamentId) {
-    await loadParticipants(defaultTournamentId);
-    await loadRounds(defaultTournamentId);
-    await loadStandings(defaultTournamentId);
+    await Promise.all([
+      loadParticipants(defaultTournamentId),
+      loadRounds(defaultTournamentId),
+      loadStandings(defaultTournamentId)
+    ]);
+    updateGenerateButtonState(defaultTournamentId);
   }
 
   document.getElementById("participant-tournament").addEventListener("change", async (event) => {
-    await loadParticipants(event.target.value);
+    const tournamentId = event.target.value;
+    await loadParticipants(tournamentId);
+    updateGenerateButtonState(tournamentId);
   });
 
   document.getElementById("create-tournament").addEventListener("click", () => {
