@@ -1,0 +1,390 @@
+const API_BASE = "/api";
+
+// REST helpers used across the Stitch-generated screens.
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {})
+    },
+    ...options
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed: ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+// --- API mapping helpers ---
+// Tournament endpoints map to TournamentController/TournamentService.
+const tournamentApi = {
+  list: () => fetchJson(`${API_BASE}/tournaments`),
+  create: (payload) =>
+    fetchJson(`${API_BASE}/tournaments`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  participants: (tournamentId) =>
+    fetchJson(`${API_BASE}/tournaments/${tournamentId}/participants`),
+  addParticipant: (tournamentId, payload) =>
+    fetchJson(`${API_BASE}/tournaments/${tournamentId}/participants`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    })
+};
+
+// Player endpoints map to PlayersController/PlayerService.
+const playerApi = {
+  list: () => fetchJson(`${API_BASE}/players`),
+  create: (payload) =>
+    fetchJson(`${API_BASE}/players`, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }),
+  remove: (playerId) =>
+    fetchJson(`${API_BASE}/players/${playerId}`, { method: "DELETE" })
+};
+
+// Round/Match endpoints map to RoundController/MatchService.
+const roundApi = {
+  list: (tournamentId) =>
+    fetchJson(`${API_BASE}/tournaments/${tournamentId}/rounds`),
+  generateNext: (tournamentId) =>
+    fetchJson(`${API_BASE}/tournaments/${tournamentId}/rounds/next`, {
+      method: "POST"
+    })
+};
+
+const matchApi = {
+  updateResult: (matchId, payload) =>
+    fetchJson(`${API_BASE}/matches/${matchId}/result`, {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    })
+};
+
+// Standings endpoint maps to StandingService.
+const standingApi = {
+  list: (tournamentId) =>
+    fetchJson(`${API_BASE}/tournaments/${tournamentId}/standings`)
+};
+
+const resultOptions = [
+  { value: "ONE_ZERO", label: "1-0" },
+  { value: "ZERO_ONE", label: "0-1" },
+  { value: "HALF_HALF", label: "1/2-1/2" },
+  { value: "F1_0", label: "F1-0" },
+  { value: "ZERO_F1", label: "0-F1" },
+  { value: "BYE", label: "BYE" },
+  { value: "ZERO_ZERO", label: "0-0" }
+];
+
+const toast = document.getElementById("toast");
+
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), 2500);
+}
+
+function setActiveSection(sectionId) {
+  document.querySelectorAll(".section").forEach((section) => {
+    section.classList.toggle("is-active", section.id === sectionId);
+  });
+  document.querySelectorAll(".app-nav button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.section === sectionId);
+  });
+}
+
+async function loadTournaments() {
+  const tournaments = await tournamentApi.list();
+  renderTournamentCards(tournaments);
+  hydrateTournamentSelects(tournaments);
+}
+
+function renderTournamentCards(tournaments) {
+  const list = document.getElementById("tournament-list");
+  list.innerHTML = "";
+
+  tournaments.forEach((tournament) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <h2>${tournament.name}</h2>
+      <p><span class="badge">${tournament.roundsCount ?? "?"} rounds</span></p>
+      <p>Players: ${tournament.playersCount ?? "-"}</p>
+      <p>Rounds played: ${tournament.roundsPlayed ?? "-"}</p>
+      <button data-id="${tournament.id}" class="open-tournament">Open Tournament</button>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function hydrateTournamentSelects(tournaments) {
+  const selects = [
+    document.getElementById("participant-tournament"),
+    document.getElementById("pairings-tournament"),
+    document.getElementById("standings-tournament")
+  ];
+
+  selects.forEach((select) => {
+    if (!select) return;
+    select.innerHTML = "";
+    tournaments.forEach((tournament) => {
+      const option = document.createElement("option");
+      option.value = tournament.id;
+      option.textContent = tournament.name;
+      select.appendChild(option);
+    });
+  });
+}
+
+async function loadPlayers() {
+  const players = await playerApi.list();
+  renderPlayers(players);
+  hydratePlayerSelect(players);
+}
+
+function renderPlayers(players) {
+  const list = document.getElementById("player-list");
+  list.innerHTML = "";
+  players.forEach((player) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div>
+        <strong>${player.firstName} ${player.lastName}</strong>
+        <div class="muted">Rating: ${player.initialRating ?? "-"}</div>
+      </div>
+      <button data-id="${player.id}" class="remove-player">Remove</button>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function hydratePlayerSelect(players) {
+  const select = document.getElementById("participant-player");
+  select.innerHTML = "";
+  players.forEach((player) => {
+    const option = document.createElement("option");
+    option.value = player.id;
+    option.textContent = `${player.firstName} ${player.lastName}`;
+    select.appendChild(option);
+  });
+}
+
+async function loadParticipants(tournamentId) {
+  const participants = await tournamentApi.participants(tournamentId);
+  const list = document.getElementById("participants-list");
+  list.innerHTML = "";
+  participants.forEach((participant) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div>
+        <strong>${participant.playerName}</strong>
+        <div class="muted">Seed: ${participant.seedNo ?? "-"}</div>
+      </div>
+      <span class="badge">${participant.initialRating ?? "-"}</span>
+    `;
+    list.appendChild(row);
+  });
+}
+
+async function loadRounds(tournamentId) {
+  const rounds = await roundApi.list(tournamentId);
+  const container = document.getElementById("rounds-list");
+  container.innerHTML = "";
+
+  rounds.forEach((round) => {
+    const roundBlock = document.createElement("div");
+    roundBlock.className = "stack";
+    roundBlock.innerHTML = `<h2>Round ${round.number}</h2>`;
+
+    round.matches.forEach((match) => {
+      const row = document.createElement("div");
+      row.className = "list-row";
+      const options = resultOptions
+        .map((option) =>
+          `<option value="${option.value}" ${option.value === match.resultCode ? "selected" : ""}>${option.label}</option>`
+        )
+        .join("");
+      row.innerHTML = `
+        <div>
+          <strong>Board ${match.boardNo}</strong>
+          <div>${match.whitePlayer ?? "BYE"} vs ${match.blackPlayer ?? "BYE"}</div>
+        </div>
+        <select data-match-id="${match.id}" class="result-select">
+          ${options}
+        </select>
+      `;
+      roundBlock.appendChild(row);
+    });
+
+    container.appendChild(roundBlock);
+  });
+}
+
+async function loadStandings(tournamentId) {
+  const standings = await standingApi.list(tournamentId);
+  const container = document.getElementById("standings-list");
+  container.innerHTML = "";
+
+  standings.forEach((standing, index) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div>
+        <strong>#${index + 1} ${standing.playerName}</strong>
+        <div class="muted">Points: ${standing.points ?? 0}</div>
+      </div>
+      <div class="badge">TB1: ${standing.tieBreaker1 ?? "-"}</div>
+      <div class="badge">TB2: ${standing.tieBreaker2 ?? "-"}</div>
+      <div class="badge">TB3: ${standing.tieBreaker3 ?? "-"}</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function wireNavigation() {
+  document.querySelectorAll(".app-nav button").forEach((button) => {
+    button.addEventListener("click", () => {
+      setActiveSection(button.dataset.section);
+    });
+  });
+}
+
+function wireForms() {
+  document.getElementById("tournament-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const tieBreakers = formData.getAll("tiebreakers");
+
+    // Backend mapping: POST /tournaments with name + roundsCount.
+    // Tie-breakers are passed as an ordered array of TieBreakerType.
+    await tournamentApi.create({
+      name: formData.get("name"),
+      roundsCount: Number(formData.get("rounds")),
+      tieBreakers
+    });
+
+    showToast("Tournament created.");
+    await loadTournaments();
+  });
+
+  document.getElementById("add-participant-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+    const tournamentId = formData.get("tournament");
+
+    // Backend mapping: POST /tournaments/{id}/participants for Participation creation.
+    await tournamentApi.addParticipant(tournamentId, {
+      playerId: formData.get("player"),
+      seedNo: Number(formData.get("seed")) || null,
+      initialRating: Number(formData.get("rating")) || null
+    });
+
+    showToast("Participant added.");
+    await loadParticipants(tournamentId);
+  });
+
+  document.getElementById("player-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(event.target);
+
+    // Backend mapping: POST /players for Player creation.
+    await playerApi.create({
+      firstName: formData.get("firstName"),
+      lastName: formData.get("lastName"),
+      rating: Number(formData.get("rating")) || null
+    });
+
+    showToast("Player created.");
+    await loadPlayers();
+  });
+}
+
+function wireActions() {
+  document.getElementById("tournament-list").addEventListener("click", async (event) => {
+    const button = event.target.closest(".open-tournament");
+    if (!button) return;
+
+    const tournamentId = button.dataset.id;
+    setActiveSection("pairings");
+    document.getElementById("pairings-tournament").value = tournamentId;
+    await loadRounds(tournamentId);
+  });
+
+  document.getElementById("player-list").addEventListener("click", async (event) => {
+    const button = event.target.closest(".remove-player");
+    if (!button) return;
+
+    await playerApi.remove(button.dataset.id);
+    showToast("Player removed.");
+    await loadPlayers();
+  });
+
+  document.getElementById("pairings-tournament").addEventListener("change", async (event) => {
+    await loadRounds(event.target.value);
+  });
+
+  document.getElementById("standings-tournament").addEventListener("change", async (event) => {
+    await loadStandings(event.target.value);
+  });
+
+  document.getElementById("generate-round").addEventListener("click", async () => {
+    const tournamentId = document.getElementById("pairings-tournament").value;
+
+    // Backend mapping: POST /tournaments/{id}/rounds/next triggers PairingService.
+    await roundApi.generateNext(tournamentId);
+    showToast("Round generated.");
+    await loadRounds(tournamentId);
+  });
+
+  document.getElementById("rounds-list").addEventListener("change", async (event) => {
+    const select = event.target.closest(".result-select");
+    if (!select) return;
+
+    const matchId = select.dataset.matchId;
+
+    // Backend mapping: PUT /matches/{id}/result updates Match.resultCode.
+    await matchApi.updateResult(matchId, {
+      resultCode: select.value
+    });
+
+    const tournamentId = document.getElementById("pairings-tournament").value;
+    showToast("Result saved.");
+    await loadStandings(tournamentId);
+  });
+}
+
+async function bootstrap() {
+  wireNavigation();
+  wireForms();
+  wireActions();
+
+  await Promise.all([loadTournaments(), loadPlayers()]);
+
+  const defaultTournamentId = document.getElementById("pairings-tournament").value;
+  if (defaultTournamentId) {
+    await loadParticipants(defaultTournamentId);
+    await loadRounds(defaultTournamentId);
+    await loadStandings(defaultTournamentId);
+  }
+
+  document.getElementById("participant-tournament").addEventListener("change", async (event) => {
+    await loadParticipants(event.target.value);
+  });
+}
+
+bootstrap().catch((error) => {
+  console.error(error);
+  showToast("Failed to load data. Check API endpoints.");
+});

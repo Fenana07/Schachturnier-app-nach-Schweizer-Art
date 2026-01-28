@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chess Swiss Manager</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo">ChessManager</div>
+    <nav class="app-nav">
+      <button data-section="overview">Dashboard</button>
+      <button data-section="setup">Tournament Setup</button>
+      <button data-section="players">Players</button>
+      <button data-section="pairings">Pairings</button>
+      <button data-section="standings">Standings</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="overview" class="section is-active">
+      <div class="section-header">
+        <h1>Tournament Overview</h1>
+        <button id="create-tournament" class="primary">Create Tournament</button>
+      </div>
+      <div id="tournament-list" class="card-grid"></div>
+    </section>
+
+    <section id="setup" class="section">
+      <h1>Tournament Setup</h1>
+      <form id="tournament-form" class="card">
+        <div class="form-row">
+          <label>
+            Tournament Name
+            <input type="text" name="name" placeholder="Winter Swiss Open 2024" required />
+          </label>
+          <label>
+            Rounds
+            <input type="number" name="rounds" min="1" value="5" required />
+          </label>
+          <label>
+            Tie-breakers
+            <select name="tiebreakers" multiple>
+              <option value="BUCHHOLZ">Buchholz</option>
+              <option value="MEDIAN_BUCHHOLZ">Median Buchholz</option>
+              <option value="SONNEBORN_BERGER">Sonneborn-Berger</option>
+              <option value="H2H">Head-to-Head</option>
+              <option value="WINS">Wins</option>
+              <option value="BLACKS">Blacks</option>
+            </select>
+          </label>
+        </div>
+        <button type="submit" class="primary">Save Tournament</button>
+      </form>
+
+      <div class="section-split">
+        <div class="card">
+          <h2>Add Participant</h2>
+          <form id="add-participant-form" class="stack">
+            <label>
+              Tournament
+              <select name="tournament" id="participant-tournament"></select>
+            </label>
+            <label>
+              Player
+              <select name="player" id="participant-player"></select>
+            </label>
+            <label>
+              Seed
+              <input type="number" name="seed" min="1" />
+            </label>
+            <label>
+              Initial Rating
+              <input type="number" name="rating" min="0" />
+            </label>
+            <button type="submit">Add Player</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Participants</h2>
+          <div id="participants-list" class="stack"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="players" class="section">
+      <h1>Player Management</h1>
+      <div class="section-split">
+        <form id="player-form" class="card">
+          <h2>Add Player</h2>
+          <label>
+            First Name
+            <input type="text" name="firstName" required />
+          </label>
+          <label>
+            Last Name
+            <input type="text" name="lastName" required />
+          </label>
+          <label>
+            Rating
+            <input type="number" name="rating" min="0" />
+          </label>
+          <button type="submit" class="primary">Add Player</button>
+        </form>
+        <div class="card">
+          <h2>Players</h2>
+          <div id="player-list" class="stack"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pairings" class="section">
+      <div class="section-header">
+        <h1>Rounds &amp; Pairings</h1>
+        <div class="actions">
+          <select id="pairings-tournament"></select>
+          <button id="generate-round" class="primary">Generate Next Round</button>
+        </div>
+      </div>
+      <div id="rounds-list" class="card"></div>
+    </section>
+
+    <section id="standings" class="section">
+      <div class="section-header">
+        <h1>Standings</h1>
+        <select id="standings-tournament"></select>
+      </div>
+      <div id="standings-list" class="card"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
